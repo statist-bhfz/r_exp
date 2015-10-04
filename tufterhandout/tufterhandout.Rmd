@@ -1,0 +1,63 @@
+---
+title: "HTML в стиле Э. Тафти"
+output: 
+  tufterhandout::html_tufte_handout
+---
+
+```{r, echo=FALSE, message=FALSE}
+setwd("D:/GITHUB/r_exp")
+library(tufterhandout)
+library(xtable)
+library(ggplot2)
+```
+
+Специфический стиль форматирования текста и графики, придуманный Эдвардом Тафти, можно использовать в своих документах при помощи пакета [tufterhandout](https://github.com/sachsmc/tufterhandout).
+Устанавливать пакет лучше с Гитхаба:
+
+```{r, eval=FALSE}
+devtools::install_github("tufterhandout", "sachsmc")
+```
+
+<aside>Статья в Википедии об <br>
+[Эдварде Тафти](https://ru.wikipedia.org/wiki/%D0%A2%D0%B0%D1%84%D1%82%D0%B8,_%D0%AD%D0%B4%D0%B2%D0%B0%D1%80%D0%B4)</aside> 
+
+В документе RMarkdown нужно включить соответствующий режим вывода:
+
+```
+output: 
+    tufterhandout::html_tufte_handout
+```
+
+<aside>
+```{r asidecode, results='asis'}
+print(xtable(head(iris[, 1:3])), type = "html", include.rownames=FALSE)
+```
+</aside>
+
+Как можно видеть на примере этого документа (если вдруг ранее не встречали подобного форматирования в книгах), особенностью данного стиля является активное использование правого поля для сносок, подписей и картинок.
+
+Основных возможностей всего четыре: простая текстовая сноска с форматированием, фрагмент кода и/или результатов, сноска с маленькой картинкой и растягивание картинки на всю ширину страницы. Ниже и сбоку - несколько примеров.
+
+```{r}
+p <- ggplot(mtcars, aes(factor(cyl), mpg)) +
+    geom_boxplot(aes(fill = cyl))
+```
+
+<aside>
+```{r, echo=FALSE}
+p
+```
+</aside>
+
+Текст или код для боковых элементов нужно помещать между тэгами `<aside></aside>`.
+
+Картинку во всю ширину можно добавить, задав параметр для соответствующего чанка `fig.star=TRUE`.
+
+```{r, tidy=TRUE, fig.width=22, fig.height=3, fig.star=TRUE}
+ggplot(faithful, aes(y = eruptions, x = waiting)) + 
+    geom_point() + 
+    stat_smooth(method = "loess")
+```
+
+P.S. Также существует [Tufte-LaTeX](https://tufte-latex.github.io/tufte-latex/).
+
