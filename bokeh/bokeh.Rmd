@@ -53,7 +53,7 @@ figure() %>%
   ly_points(cars, color = ramp, size = seq_len(n))
 ```
 
-Небольшой пример из руководства:
+Еще один пример из руководства:
 
 ```{r example}
 p <- figure() %>%
@@ -64,3 +64,4 @@ p <- figure() %>%
 p
 ```
 
+В общем, данный пакет мне понравился, и я обязательно попробую сделать какое-нибудь полезное shiny-приложение с его использованием. Из негатива: в текущей версии не работает создание standalone html, о чем уже написан [багрепорт](https://github.com/bokeh/rbokeh/issues/147). При этом в старой версии (я использовал [2.3.2](ml.stat.purdue.edu/drat/src/contrib/)) таких проблем не было (пример html со встроенным графиком лежит [здесь](https://github.com/statist-bhfz/r_exp/tree/master/bokeh)). Вот еще интересный пример того, что можно сделать при помощи rbokeh: [Модный график с помощью «Bokeh»](http://ru-datascience.ru/2015/08/28/modnyj-grafik-s-pomoshhyu-bokeh/).
