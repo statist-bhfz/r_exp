@@ -1,0 +1,66 @@
+---
+title: "Bokeh: еще одна библиотека для создания интерактивной графики"
+output: 
+    html_document:
+         self_contained: yes
+---
+
+```{r dir, echo=FALSE}
+setwd("D:/GITHUB/r_exp/bokeh")
+```
+
+Продолжая тему создания интерактивной графики, рассмотрим изначально питоновскую библиотеку [Bokeh](http://bokeh.pydata.org/en/latest/), которая реализована для R в виде пакета [rbokeh](http://hafen.github.io/rbokeh/index.html).
+
+Устанавливается она с Гитхаба, для работы требует htmlwidgets:
+
+```{r packages, eval=FALSE}
+# Установка с GithHub:
+devtools::install_github("ramnathv/htmlwidgets")
+devtools::install_github("bokeh/rbokeh", ref = "master")
+```
+
+```{r libs, echo=FALSE, message=FALSE, warning=FALSE}
+library(rbokeh)
+```
+
+Пакет отлично документирован, на [одной странице](http://hafen.github.io/rbokeh/index.html) находится руководство, на [другой](hafen.github.io/rbokeh/rd.html) - справка.
+
+Принцип построение графика напоминает **ggplot2**: после инициализации с помощью функции `figure()` происходит добавление элементов, называемых "глифами", с помощью соответствующих функций. Все функции, добавляющие слои на график (`ly_point`, `ly_abline` и др.), имеют общий префикс `ly_` и принимают в качестве первого аргумента объект, содержащий изменяемый график. Можно использовать конвейерный оператор `%>%`:
+
+```{r pipe, eval = FALSE}
+p <- figure() %>%
+  ly_points(speed, dist, data = cars)
+```
+
+Можно явно указывать набор данных для каждого слоя, как это было сделано в примере выше. Имена переменных из набора данных передаются в качестве аргументов функции с использованием [нестандартного вычисления](http://biostat-r.blogspot.com/2015/11/r_21.html).
+
+Что касается собственно интерактивных возможностей, то здесь помимо разных вариантов масштабирования есть возможность определять, что будет отображаться в виде "всплывающей подсказки" при наведении курсора. За это отвечает аргумент `hover`:
+
+```{r hover, eval = FALSE}
+figure() %>%
+  ly_points(speed, dist, data = cars, hover = c(speed, dist))
+
+figure() %>%
+  ly_points(speed, dist, data = cars, hover = "This car was going @speed mph!")
+```
+
+Атрибуты или векторы атрибутов задаются самым обыкновенным образом:
+
+```{r attr, eval = FALSE}
+n <- nrow(cars)
+ramp <- colorRampPalette(c("red", "blue"))(n)
+figure() %>%
+  ly_points(cars, color = ramp, size = seq_len(n))
+```
+
+Небольшой пример из руководства:
+
+```{r example}
+p <- figure() %>%
+  ly_points(Sepal.Length, Sepal.Width, 
+            data = iris,
+            color = Species, 
+            glyph = Species)
+p
+```
+
