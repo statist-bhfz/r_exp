@@ -3,7 +3,7 @@ title: "Plotly: интерактивная графика для R и не только"
 output: html_document
 ---
 
-```{r, echo=FALSE}
+```{r dir, echo=FALSE}
 setwd("D:/GITHUB/r_exp/plotly")
 ```
 
@@ -13,14 +13,14 @@ setwd("D:/GITHUB/r_exp/plotly")
 
 Для начала нужно установить пакет (с CRAN или с GithHub):
 
-```{r, eval=FALSE}
+```{r packages, eval=FALSE}
 # Установка с CRAN:
 install.packages("plotly")
 # Установка самой свежей версии с GithHub:
 devtools::install_github("ropensci/plotly")
 ```
 
-```{r , echo=FALSE, message=FALSE, warning=FALSE}
+```{r libs, echo=FALSE, message=FALSE, warning=FALSE}
 library(plotly)
 library(dplyr)
 ```
@@ -51,7 +51,7 @@ library(dplyr)
 
 Первый способ - сохранение графика и передача переменной, которая на него ссылается, в качестве первого аргумента функций `add_trace()` и `layout()`:
 
-```{r, eval=FALSE}
+```{r example1, eval=FALSE}
 p <- plot_ly(...)
 p <- add_trace(p, ...)
 p <- layout(p, ...)
@@ -59,7 +59,7 @@ p <- layout(p, ...)
 
 Альтернативный вариант - использование конвейерного оператора `%>%`, хорошо знакомого по пакету **dplyr**, который позволяет объединять трансформацию данных и визуализацию в одну цепочку операций:
 
-```{r, eval=FALSE}
+```{r example2, eval=FALSE}
 p <- plot_ly(...) %>%
     add_trace(...) %>%
     layout(...)
@@ -67,7 +67,7 @@ p <- plot_ly(...) %>%
 
 Рассмотрим слегка измененный пример из документации.
 
-```{r}
+```{r base_graph}
 p <- plot_ly(economics,
     type = "scatter",
     x = date,
@@ -102,7 +102,7 @@ p <- plot_ly(economics,
 
 Добавим сглаживание методом локальной регрессии (loess):
 
-```{r}
+```{r add_smooth}
 p <- add_trace(p,                       
     y = fitted((loess(uempmed ~ as.numeric(date)))),
     name = "loess",
@@ -116,13 +116,13 @@ p <- add_trace(p,
 
 Найдем строку данных, соответствующую максимальному значению переменной `uempmed`:
 
-```{r}
+```{r data_trans}
 maxdf <- economics %>% filter(uempmed == max(uempmed))
 ```
 
 Добавим название графика и подписи осей; отметим максимальное значение на графике: 
 
-```{r}
+```{r add_layout}
 p <- layout(p,  
     title = "График, созданный при помощи <br> <a href='https://plot.ly/'>Plotly</a>",
     xaxis = list( 
@@ -152,7 +152,7 @@ p
 
 Еще из интересных возможностей хочу отметить встраивание одного графика в другой:
 
-```{r}
+```{r nested_graphs}
 p1 <- plot_ly(x = c(1, 2, 3), y = c(4, 3, 2))
 p2 <- plot_ly(x = c(20, 30, 40), y = c(30, 40, 50)) %>%
   layout(xaxis = list(domain = c(0.6, 0.95)),
@@ -162,7 +162,7 @@ subplot(p1, p2)
 
 Наконец, если не хочется тратить время на изучение нового синтаксиса, можно рисовать графики привычными средствами **ggplot2**, а затем конвертировать их в интерактивный вариант.
 
-```{r}
+```{r ggplotly}
 dsamp <- diamonds[sample(nrow(diamonds), 1000), ]
 p <- ggplot(data = dsamp, aes(x = carat, y = price)) +
     geom_point(aes(text = paste("Clarity:", clarity))) +
@@ -173,7 +173,6 @@ gg
 ```
 
 Был задан параметр `size = 0.1`, иначе после конвертирования линия будет очень толстой. Это баг, который вроде бы недавно был исправлен, то есть в новых версиях конвертирование должно происходить более правильным образом.
-
 
 
 ```{r, eval=FALSE, echo=FALSE}
