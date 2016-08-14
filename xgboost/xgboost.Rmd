@@ -1,0 +1,381 @@
+---
+title: "xgboost. Теория и практика"
+output:
+  html_document:
+    toc: yes
+  word_document:
+    toc: yes
+---
+
+```{r, echo = FALSE}
+setwd("D:/GITHUB/r_exp/xgboost")
+library(knitr)
+```
+
+
+## 1. Установка пакета xgboost
+
+Библиотека **[xgboost](https://github.com/dmlc/xgboost)** написана на C++ и может использоваться как автономно (при помощи интерфейса командой строки), так и при помощи библиотек-интерфейсов для [R](https://github.com/dmlc/xgboost/tree/master/R-package), Python, Julia и Scala. В этом сообщении рассматривается R-версия, работа с другими языками выглядит аналогично.
+
+Устанавливать можно с CRAN, но лучше использовать наиболее свежую версию версию с [GitHub](https://github.com/dmlc/xgboost/blob/master/doc/build.md) (актуально для всех ОС):
+
+```{r, eval = FALSE}
+install.packages("drat", repos = "https://cran.rstudio.com")
+drat:::addRepo("dmlc")
+install.packages("xgboost", repos = "http://dmlc.ml/drat/", type = "source")
+```
+
+Будет установлено все необходимое для работы: сама библиотека **xgboost** и пакет для R. По ссылке выше также приводятся инструкции по сборке из исходников.
+
+
+## 2. Градиентный бустинг: принцип метода и особенности реализации в xgboost
+
+Идея градиентного бустинга состоит в построении ансамбля последовательно уточняющую друг друга *элементарных* моделей. n-ная элементарная модель обучается на "ошибках" ансамбля из n-1 моделей, ответы моделей взвешенно суммируются. "Ошибки" здесь в кавычках, поскольку на самом деле каждая последующая модель приближает антиградиент функции потерь, который не обязательно равен разности фактических и предсказанных значений (т.е. ошибке в буквальном смысле). Различные функции потерь имеют разные производные, но для среднеквадратичной функции потерь, заданной как $\frac{1}{2}\left [ y_{i} - f\left ( y_{i} \right ) \right ]^{2}$, антиградиент (производная с обратным знаком) представляет собой именно разность между фактическими и предсказанными значениями: $y_{i} - f\left ( y_{i} \right )$. Это наиболее интуитивный вариант, далее в качестве более сложного примера будет рассмотрена логистическая функция потерь.
+
+Элементарная модель здесь названа *элементарной* вовсе не потому, что она обязан быть очень простой, такой как неглубокое решающее дерево. Под элементарностью подразумевается возможность присутствия модели в качестве составляющей части модели более высокого порядка, в данном случае - модели градиентного бустинга. Бустить можно практически какие угодно модели - общие линейные, обобщенные линейные, деревья решений, K-ближайших соседей и другие, например, на StackOverflow в одном из ответов упоминался бустинг нейросетей с 5 скрытыми слоями. То есть как такового ограничения на сложность модели нет, а есть лишь общая для машинного обучения дилемма смещения-дисперсии (bias-variance tradeoff): модель должна быть достаточно гибкой, чтобы восстанавливать искомую зависимость, но при этом по возможности не должна переобучаться. Элементарная модель в градиентном бустинге известна также как [weak learner](https://jeremykun.com/2015/05/18/boosting-census/) (непереводимый и довольно абстрактный термин).
+
+К особенностям реализации бустингового алгоритма в **xgboost** можно отнести использование помимо первой еще и второй производной от функции потерь, наличие встроенной регуляризации, а также возможность задавать пользовательские функции потерь и метрики качества. Первая сугубо техническая особенность повышает эффективность алгоритма. Встроенная регуляризация помогает бороться с переобучением: на очередной итерации решающее дерево не будет строиться до максимальной глубины, если это слишком незначительно улучшает качество модели ценой значительного её усложнения. Наконец, в качестве функции потерь пользователь может задать любую функцию, у которой есть непрерывная первая и вторая производная. Отметим, что в более раннем пакете **gbm** представлен широкий ассортимент функций потерь в зависимости от распределения целевой переменной:
+
+    Currently available options are "gaussian" (squared error), "laplace" (absolute loss), "tdist" (t-distribution loss), "bernoulli" (logistic regression for 0-1 outcomes), "huberized" (huberized hinge loss for 0-1 outcomes), "multinomial" (classification when there are more than 2 classes), "adaboost" (the AdaBoost exponential loss for 0-1 outcomes), "poisson" (count outcomes), "coxph" (right censored observations), "quantile", or "pairwise" (ranking measure using the LambdaMart algorithm).
+
+Удобный способ определения собственных метрик качества также реализован в пакете **caret**. Эти метрики можно использовать с любыми поддерживаемыми моделями, в том числе и с **xgboost**.
+
+
+## 3. Использование xgboost совместно с caret
+
+**xgboost** имеет множество гиперпараметров, которые нужно как-то настраивать. К счастью, пакет **[caret](http://caret.r-forge.r-project.org/)** в числе прочих моделей поддерживает и **xgboost**. К сожалению, перебрать по сетке сколько-нибудь значительное количество комбинаций  всех гиперпараметров не представляется возможным, поэтому при использовании бустинга решающих деревьев (`method = "xgbLinear"` в `caret::train` = `booster = "gblinear"` в `xgboost::xgb.train`) подбираются только значения `nrounds` (количество итераций), `max_depth` (максимальная глубина дерева), `eta` (скорость обучения), `gamma` (минимальное уменьшения значения функции потерь),  `colsample_bytree` (доля переменных, используемых при построении каждого дерева) и `min_child_weight` (для регрессии - минимальное количество наблюдений в листе дерева).
+
+В качестве примера для решения задачи регрессии возьмем набор данных о растворимости химических соединений, рассматриваемый в книге [Applied Predictive Modeling](http://www.springer.com/us/book/9781461468486). Будем иcпользовать трансформированные предикторы `solTrainXtrans`.
+
+```{r}
+library(AppliedPredictiveModeling)
+library(caret)
+library(xgboost)
+
+data(solubility)
+ls(pattern = "^solT")
+dim(solTrainX)
+```
+
+Поскольку по умолчанию задана не очень удачная сетка значений гиперпараметров, создадим свою собственную. Количество итераций можно сделать неизменным, не очень маленьким и не очень большим - переобучается модель медленно. Проверяем деревья максимальной глубины 3, 4 и 5. Главное: скорость обучения не должна быть слишком высокой (низкую скорость можно компенсировать количеством итераций, высокую скорость компенсировать нельзя).
+
+```{r}
+xgbGrid <- expand.grid(nrounds = 200,
+                       max_depth = c(3, 4, 5),
+                       eta = seq(0.02, 0.1, by = 0.02),
+                       gamma = 0,
+                       colsample_bytree = c(0.6, 0.8),
+                       min_child_weight = 1)
+```
+
+Результат:
+
+```{r}
+set.seed(100)
+fitControl <- trainControl(method = "cv", 
+                           number = 3)    
+fit1 <- train(x = solTrainXtrans, 
+              y = solTrainY,
+              method = "xgbTree",
+              trControl = fitControl,
+              metric = "RMSE",
+              tuneGrid = xgbGrid)
+fit1
+```
+
+Проверка на тестовой выборке:
+
+```{r}
+pred <- predict(fit1, solTestXtrans)
+sqrt(mean((solTestY - pred) ^ 2))
+```
+
+В книге Applied Predictive Modeling показан лучший результа RMSE < 0.6 на тестовых данных. Попробуем улучшить модель путем более тонкой настройки, не используя более пакет **caret**.
+
+
+## 4. xgb.train: формат исходных данных и параметры модели
+
+Основной функцией **xgboost** для создания моделей является `xgb.train`. Также доступна функция `xgboost` с более простым интерфейсом. Данные для `xgb.train` должны быть в формате `xgb.DMatrix`, в то время как `xgboost` также принимает на вход обычные матрицы `matrix` и разреженные матрицы `dgCMatrix`. Создадим объекты класса `xgb.DMatrix` с обучающей и тестовой выборками. Необходимо задать матрицу признаков и вектор ответов, также можно задать веса наблюдений (параметр `weight`).
+
+```{r}
+xgb_train <- xgb.DMatrix(as.matrix(solTrainXtrans), 
+                         label = solTrainY)
+
+xgb_test <- xgb.DMatrix(as.matrix(solTestXtrans), 
+                        label = solTestY)
+```
+
+Полный [список параметров](http://xgboost.readthedocs.io/en/latest///parameter.html) весьма обширен и состоит из:
+
+* общих параметров (главный из них - тип бустера);
+
+* параметров, специфичных для каждого бустера;
+
+* параметров решаемой задачи.
+
+Пакет **xgboost** реализует бустинг на основе деревьев (`booster = "gbtree"` - вариант по умолчанию) и его модификацию [DART](http://xgboost.readthedocs.io/en/latest///tutorials/dart.html) (`booster = "dart"`), а также бустинг на основе линейных моделей (`booster = "gblinear"`). Мы рассмотрим первые два, поскольку бустинг линейных моделей обычно менее результативен.
+
+Имеется [краткое руководство](http://xgboost.readthedocs.io/en/latest///how_to/param_tuning.html) по настройке параметров: параметры `max_depth`, `min_child_weight` и `gamma` непосредственно ограничивают сложность модели, `subsample` и `colsample_bytree` делают её более устойчивой к шуму за счет добавления случайного выбора наблюдений и предикторов, `eta` влияет на скорость обучения. 
+Авторские рекомендации по настройке параметров, не претендующие на истину в последней инстанции:
+
+1. `max.depth` - максимальная глубина дерева. Критически важный параметр: выбор слишком глубоких деревьев приводит к переобучению, а слишком маленькие деревья не позволят эффективно восстановить искомую зависимость. Значение по умолчанию равно 6, имеет смысл попробовать значения чуть больше и чуть меньше.
+
+2. `eta`  - скорость обучения модели. Критически важный параметр, контролирующий, с каким весом предсказания каждой следующей модели суммируются с предсказаниями ансамбля. Значение по умолчанию (0.3) является слишком большим, обычно хорошо работают значения меньше 0.1. Слишком маленьким его сделать тяжело, уменьшение `eta` компенсируется увеличением количества итераций (ценой большего времени обучения, разумеется).
+
+3. `gamma` - минимальное уменьшения значения функции потерь. Можно оставить значение 0 или сделать равным какому-то небольшому числу, например 0.01.
+
+4. `subsample` - доля объектов обучающей выборки, используемых на каждой итерации. Еще один критически важный параметр, позволяющий значительно улучшить модель. По умолчанию равен 0, значение 0.5 может оказаться хорошим выбором (но нужно принимать во внимание размер выборки).
+
+5. `colsample_bytree` - доля переменных, используемых на каждой итерации. Вместе с предыдущим параметром реализует преимущества алгоритма Random Forest (на каждой итерации используется только часть наблюдений и предикторов). Обычно хорошо работают значения между 0.5 и 1, типичные для Random Forest значения скорее всего окажутся слишком маленькими. 
+
+6. `min_child_weight` - минимальное количество наблюдений в листе дерева. Имеет смысл проверить несколько значений больше 1 (например, 3, 5 и более).
+
+Полученный опытным путем список значений параметров выглядит следующим образом:
+
+```{r}
+param <- list(booster = "gbtree", 
+              max.depth = 4, 
+              eta = 0.07, 
+              gamma = 0, 
+              subsample = 0.5, 
+              colsample_bytree = 0.8, 
+              min_child_weight = 3, 
+              objective = "reg:linear", 
+              eval_metric = "rmse")
+```
+
+Итоговая модель:
+
+```{r}
+set.seed(100)
+fit2 <- xgb.train(data = xgb_train,
+                  nrounds = 400,
+                  params = param,
+                  verbose = 1,
+                  print_every_n = 50,
+                  watchlist = list(train = xgb_train, test = xgb_test))
+```
+
+Аргумент `verbose = 0` должен подавлять вывод лога в консоль, однако в действительности заодно отключает и его сохранение в модельном объекте. Поэтому указываем `print_every_n = 50`, чтобы сократить вывод результатов. Можно посмотреть или нарисовать весь лог обучения:
+
+```{r}
+fit2$evaluation_log
+plot(fit2$evaluation_log$test_rmse, main = "test_rmse")
+```
+
+Проверка на тестовой выборке (результаты соответствуют последней строке приведенного выше лога):
+
+```{r}
+pred <- predict(fit2, xgb_test)
+sqrt(mean((solTestY - pred) ^ 2))
+```
+
+Оценка важности предикторов:
+
+```{r}
+importance_frame <- xgb.importance(colnames(xgb_train),  model = fit2)    
+xgb.plot.importance(importance_frame[1:10, ]) 
+```
+
+Для сравнения построим модель с бустером DART и незначительно измененными параметрами. Результат слегка улучшился:
+
+```{r}
+param <- list(booster = "dart", 
+              max.depth = 4, 
+              eta = 0.07, 
+              gamma = 0.01, 
+              subsample = 0.6, 
+              colsample_bytree = 0.7, 
+              min_child_weight = 4, 
+              objective = "reg:linear", 
+              eval_metric = "rmse")
+set.seed(100)
+fit3 <- xgb.train(data = xgb_train,
+                  nrounds = 400,
+                  params = param,
+                  verbose = 1,
+                  print_every_n = 50,
+                  watchlist = list(train = xgb_train, test = xgb_test))
+```
+
+**xgboost** содержит встроенную функцию `xgb.cv` для [перекрестной проверки](https://github.com/dmlc/xgboost/blob/master/R-package/demo/cross_validation.R). Она может быть полезной, но пакет **caret** предлагает гораздо больше возможностей для оценки качества моделей.
+
+
+## 5. xgboost и Random Forest
+
+Благодаря экспериментальному параметру `num_parallel_tree` можно задать количество одновременно создаваемых деревьев и [представить Random Forest](http://xgboost.readthedocs.io/en/latest/R-package/discoverYourData.html#special-note-what-about-random-forests) как частный случай бустинговой модели с одной итерацией. А если использовать больше одной итерации, то получится бустинг "случайных лесов", когда каждый "случайный лес" выступает в качестве элементарной модели.
+
+```{r}
+param <- list(booster = "gbtree", 
+              max.depth = 25, 
+              eta = 1, 
+              gamma = 0, 
+              subsample = 1, 
+              colsample_bytree = 0.4, 
+              min_child_weight = 1,
+              num_parallel_tree = 200,
+              objective = "reg:linear", eval_metric = "rmse")
+set.seed(100)
+fit2 <- xgb.train(data = xgb_train,
+                  nrounds = 5,
+                  params = param,
+                  verbose = 1,
+                  watchlist = list(train = xgb_train, test = xgb_test))
+```
+
+
+## 6. Пользовательские функции и метрики качества
+
+Рассмотрим логистическую функцию потерь из [примера](https://github.com/dmlc/xgboost/blob/master/R-package/demo/custom_objective.R).
+Чтобы задать целевую функцию в **xgboost**, нужно найти первую и вторую производную функции потерь. Они имеют вид
+
+```{r, eval = FALSE}
+grad <- preds - labels      # первая производная
+hess <- preds * (1 - preds) # вторая производная
+```
+
+Ниже представлен вывод этих формул (см. также [вопрос на StackOverflow](http://stats.stackexchange.com/questions/219241/gradient-for-logistic-loss-function/219405#219405)).
+
+Логистическая функция потерь [имеет вид](https://github.com/JohnLangford/vowpal_wabbit/wiki/Loss-functions)
+
+$$log(1+e^{-yP})$$
+
+где $P$ является логарифмом отношения шансов, а $y$ - является бинарной переменной отклика (0 или 1).
+
+С другой стороны, логистическая функция потерь равна логарифмической функции правдоподобия, взятой с противоположным знаком. Работать будем непосредственно с этой функцией, знак поменяем в самом конце.
+
+Логарифмическая функция правдоподобия:
+
+$$L=y_{i}\cdot log(p_{i})+(1-y_{i})\cdot log(1-p_{i})$$
+
+$p_{i}$ - значение логистической функции (вероятность): $p_{i}=\frac{1}{1+e^{-\hat{y}_{i}}}$, где $\hat{y}_{i}$ - предсказанные значения до логистической трансформации (т.е. логарифм отношения шансов):
+
+$$L=y_{i}\cdot log\left(\frac{1}{1+e^{-\hat{y}_{i}}}\right)+(1-y_{i})\cdot log\left(\frac{e^{-\hat{y}_{i}}}{1+e^{-\hat{y}_{i}}}\right)$$
+
+Первая производная, полученная с помощью Wolfram Alpha:
+
+$${L}'=\frac{y_{i}-(1-y_{i})\cdot e^{\hat{y}_{i}}}{1+e^{\hat{y}_{i}}}$$
+
+После умножения на $\frac{e^{-\hat{y}_{i}}}{e^{-\hat{y}_{i}}}$:
+
+$${L}'=\frac{y_{i}\cdot e^{-\hat{y}_{i}}+y_{i}-1}{1+e^{-\hat{y}_{i}}}=
+\frac{y_{i}\cdot (1+e^{-\hat{y}_{i}})}{1+e^{-\hat{y}_{i}}}-\frac{1}{1+e^{-\hat{y}_{i}}}=y_{i}-p_{i}$$
+
+Меняем знак и получаем выражение для градиента логистической функции потерь:
+
+$$p_{i}-y_{i}$$
+
+Также мы можем записать первую производную как
+
+$${L}'=\frac{1}{1+e^{-\hat{y}_{i}}}-y_{i}$$
+
+и взять производую от производной (снова с помощью Wolfram Alpha):
+
+$${L}''=-\frac{e^{\hat{y}_{i}}}{\left( 1 + e^{\hat{y}_{i}} \right)^{2}} = -\frac{e^{\hat{y}_{i}}}{1 + e^{\hat{y}_{i}}}\cdot\frac{1}{1 + e^{\hat{y}_{i}}}$$
+
+Умножив каждый из двух множителей на $\frac{e^{-\hat{y}_{i}}}{e^{-\hat{y}_{i}}}$, получим
+
+$${L}''= -\frac{1}{1 + e^{-\hat{y}_{i}}}\cdot\frac{e^{-\hat{y}_{i}}}{1 + e^{-\hat{y}_{i}}}=-p(1-p)$$
+
+Снова меняем знак, получаем вторую производную $p(1-p)$. Это в точности те формулы, которые используется в рассматриваемом примере:
+
+```{r}
+logregobj <- function(preds, dtrain) {
+  labels <- getinfo(dtrain, "label")
+  # Получаем вероятности из логарифма отношения шансов:
+  preds <- 1/(1 + exp(-preds)) 
+  grad <- preds - labels
+  hess <- preds * (1 - preds)
+  return(list(grad = grad, hess = hess))
+}
+
+# Соответствующая метрика качества:
+evalerror <- function(preds, dtrain) {
+  labels <- getinfo(dtrain, "label")
+  err <- as.numeric(sum(labels != (preds > 0)))/length(labels)
+  return(list(metric = "custom_error", value = err))
+}
+```
+
+Проверка:
+
+```{r}
+data(agaricus.train, package='xgboost')
+data(agaricus.test, package='xgboost')
+dtrain <- xgb.DMatrix(agaricus.train$data, label = agaricus.train$label)
+dtest <- xgb.DMatrix(agaricus.test$data, label = agaricus.test$label)
+watchlist <- list(eval = dtest, train = dtrain)
+num_round <- 3
+
+param <- list(max_depth = 2, 
+              eta = 1, 
+              nthread = 2, 
+              silent = 1, 
+              objective = logregobj, 
+              eval_metric = evalerror)
+
+xgb.train(param, dtrain, num_round, watchlist)
+
+# Воспроизводит результат:
+param <- list(max_depth = 2, 
+              eta = 1, 
+              nthread = 2, 
+              silent = 1, 
+              objective = "binary:logistic", 
+              eval_metric = "error")
+
+xgb.train(param, dtrain, num_round, watchlist)
+```
+
+В примере выше 1 метрика оценивалась на 2 наборах данных. Можно сделать и наоборот, задав несколько метрик (но скомбинировать встроенную и пользовательскую метрику не получится):
+
+```{r}
+watchlist <- list(train = dtrain)
+num_round <- 3
+param <- list(max_depth = 2, 
+              eta = 1, 
+              nthread = 2, 
+              silent = 1, 
+              objective = logregobj, 
+              eval_metric = "logloss",
+              eval_metric = "error")
+xgb.train(param, dtrain, num_round, watchlist)
+```
+
+
+## 7. Производительность
+
+Высокая производительность **xgboost** обеспечивается в том числе за счет многопоточности:
+
+    Parallelization is automatically enabled if OpenMP is present. Number of threads can also be manually specified via nthread parameter.
+    
+При [сборке из исходников](https://github.com/dmlc/xgboost/blob/master/doc/build.md) компиллятор должен поддерживать OpenMP. На OSX с этим есть некоторые проблемы.
+
+Для работы с большими выборками пригодится возможность [загрузки данных с диска](http://xgboost.readthedocs.io/en/latest/how_to/external_memory.html). А для работы с очень большими данными можно запускать **xgboost** поверх [систем распределенных вычислений](http://xgboost.readthedocs.io/en/latest/tutorials/aws_yarn.html).
+
+
+## Литература
+
+[XGBoost: A Scalable Tree Boosting System](http://arxiv.org/pdf/1603.02754v3.pdf)
+
+[Greedy Function Approximation: A Gradient Boosting Machine](https://statweb.stanford.edu/~jhf/ftp/trebst.pdf)
+
+[Stochastic Gradient Boosting](https://statweb.stanford.edu/~jhf/ftp/stobst.pdf)
+[The Elements of. Statistical Learning](http://statweb.stanford.edu/~tibs/ElemStatLearn/)
+
+[Applied Predictive Modeling](http://www.springer.com/us/book/9781461468486)
+
+
+
+
+```{r, eval = FALSE, echo = FALSE}
+gbmGrid <- expand.grid(interaction.depth = seq(1, 5, by = 2),
+                       n.trees = seq(500, 800, by = 100),
+                       shrinkage = 0.1,
+                       n.minobsinnode = 10)
+set.seed(100)
+gbmTune <- train(solTrainXtrans, solTrainY, method = "gbm",
+                 tuneGrid = gbmGrid, verbose = FALSE)
+
+```
+

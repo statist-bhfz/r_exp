@@ -18,8 +18,8 @@ library(caret)
 data(Colon)
 df <- Colon$X # предикторы
 Y <- as.factor(Colon$Y) # метки классов
-preProcValues <- preProcess(df, method = c("center", "scale"))
-df <- predict(preProcValues, df) # стандартизация
+preProcValues <- preProcess(df, method = c("center", "scale")) # стандартизация
+df <- predict(preProcValues, df) 
 head(df[, 1:5])
 ```
 
@@ -48,7 +48,7 @@ plot(df.mds$points[, 1], df.mds$points[, 2], col = Y)
 
 ### t-SNE
 
-Суть метода подробно объясняется в публикации на [хабре](https://habrahabr.ru/post/267041/). Воспользуемся эффективной реализацией алгоритма на C++ при помощи пакета [Rstne](https://github.com/jkrijthe/Rtsne) (есть также [реализация}(https://lvdmaaten.github.io/tsne/) непосредственно на R):
+Суть метода подробно объясняется в публикации на [хабре](https://habrahabr.ru/post/267041/). Воспользуемся эффективной реализацией алгоритма на C++ при помощи пакета [Rstne](https://github.com/jkrijthe/Rtsne) (есть также [реализация](https://lvdmaaten.github.io/tsne/) непосредственно на R):
 
 ```{r}
 set.seed(100)
